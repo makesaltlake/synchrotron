@@ -26,7 +26,7 @@ def trigger():
     return 'no email address extracted.'
 
   # TODO: disconnect eagerly
-  r = redis.Redis.from_url(os.getenv('REDIS_URL'))
+  r = redis.Redis.from_url(os.getenv('REDIS_URL'), charset='utf-8', decode_responses=True)
   r.publish('trigger', address)
 
   print('triggered %s' % address)

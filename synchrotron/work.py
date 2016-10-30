@@ -11,7 +11,7 @@ class SynchrotronWorker:
     self.slack_channel = os.getenv('SLACK_CHANNEL')
 
   def run(self):
-    r = redis.Redis.from_url(os.getenv('REDIS_URL'))
+    r = redis.Redis.from_url(os.getenv('REDIS_URL'), charset='utf-8', decode_responses=True)
 
     p = r.pubsub(ignore_subscribe_messages=True)
     p.subscribe('trigger', 'sync')
