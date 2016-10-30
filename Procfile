@@ -1,1 +1,1 @@
-web: python3 synchrotron.py
+web: FLASK_APP=synchrotron.py flask run
