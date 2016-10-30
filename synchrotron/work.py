@@ -15,7 +15,7 @@ class SynchrotronWorker:
     p.subscribe('trigger')
 
     # fire off initial sync
-    sync()
+    self.sync()
 
     # then listen for requests to sync again
     for message in p.listen():
@@ -23,7 +23,7 @@ class SynchrotronWorker:
       while p.get_message():
         pass
       # then sync
-      sync()
+      self.sync()
 
   def sync(self):
     print('sync at %s' % time.ctime())
