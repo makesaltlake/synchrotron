@@ -14,7 +14,7 @@ def index():
 
 @app.route('/trigger', methods=['POST'])
 def trigger():
-  token = request.form['token']
+  token = request.form.get('token') or request.args.get('token')
   required_token = os.getenv('TRIGGER_TOKEN')
   if required_token is None or token != required_token:
     abort(403)
