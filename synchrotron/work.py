@@ -26,16 +26,20 @@ class SynchrotronWorker:
         # TODO: ignore multiple sync messages all sent in short order
         self.sync()
       elif message['channel'] == 'trigger':
+        print('trigger message')
         self.trigger(message['data'])
 
   def sync(self):
     print('sync at %s' % time.ctime())
 
   def trigger(self, address):
+    print('sending to slack')
     self.send_slack_message(':wave:')
 
   def send_slack_message(self, message):
+    print('posting')
     self.slack.api_call('chat.postMessage', channel=self.slack_channel, text=message, as_user=True)
+    print('done posting')
 
 
 def retry(function, retries=3):
