@@ -15,15 +15,12 @@ def index():
 
 @app.route('/trigger', methods=['POST'])
 def trigger():
-  params = {**request.args, **request.form}
-  print('params are %s, form is %s, and args are %s' % (params, request.form, request.args))
-
-  token = params['token']
+  token = request.form['token']
   required_token = os.getenv('TRIGGER_TOKEN')
   if required_token is None or token != required_token:
     abort(403)
 
-  address = parse_email(params['body'])
+  address = parse_email(request.form['body'])
   if address is None:
     print('no email address extracted')
     return 'no email address extracted.'
