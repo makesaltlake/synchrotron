@@ -83,7 +83,7 @@ class SynchrotronWorker:
     self.send_slack_message('New member: %s %s (%s). %s' % (user['first_name'], user['last_name'], user['email'], invite_observation))
 
   def invite_to_slack(self, user):
-    result = self.slack.api_call('users.admin.invite', email=user['email'], first_name=user['first_name'], last_name=user['last_name'], set_active=True)
+    response = self.slack.api_call('users.admin.invite', email=user['email'], first_name=user['first_name'], last_name=user['last_name'], set_active=True)
     if response['ok'] == True:
       return InviteStatus.successful
     elif response['error'] == 'already_invited':
