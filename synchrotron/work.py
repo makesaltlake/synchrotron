@@ -11,7 +11,7 @@ class SynchrotronWorker:
   def run(self):
     r = redis.Redis.from_url(os.getenv('REDIS_URL'))
 
-    p = db.pubsub(ignore_subscribe_messages=True)
+    p = r.pubsub(ignore_subscribe_messages=True)
     p.subscribe('trigger')
 
     # fire off initial sync
