@@ -119,8 +119,9 @@ def retry(function, retries=3):
       if i == retries - 1:
         print('try %s failed, bailing' % (i + 1))
         raise
+      else:
+        print('try %s failed, retrying...' % (i + 1))
     else:
-      print('try %s failed, retrying...' % (i + 1))
       return result
 
 
