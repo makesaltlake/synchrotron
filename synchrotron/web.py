@@ -1,5 +1,6 @@
 
 import flask
+from flask import request
 import redis
 import os
 
