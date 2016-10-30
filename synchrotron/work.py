@@ -21,11 +21,11 @@ class SynchrotronWorker:
 
     # then listen for requests
     for message in p.listen():
-      if p['channel'] == 'sync':
+      if message['channel'] == 'sync':
         # TODO: ignore multiple sync messages all sent in short order
         self.sync()
-      elif p['channel'] == 'trigger':
-        self.trigger(p['data'])
+      elif message['channel'] == 'trigger':
+        self.trigger(message['data'])
 
   def sync(self):
     print('sync at %s' % time.ctime())
