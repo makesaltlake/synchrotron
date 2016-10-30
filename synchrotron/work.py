@@ -27,7 +27,7 @@ class SynchrotronWorker:
 
     with requests.Session() as session:
       session.headers['Referer'] = self.wordpress_url
-      retry(lambda: s.post(urljoin(self.wp_url, 'wp-login.php'), data={'log': self.wp_username, 'pwd': self.wp_password}, timeout=30).raise_for_status())
+      retry(lambda: session.post(urljoin(self.wp_url, 'wp-login.php'), data={'log': self.wp_username, 'pwd': self.wp_password}, timeout=30).raise_for_status())
 
       self.wordpress_session = session
       print('Logged in.')
