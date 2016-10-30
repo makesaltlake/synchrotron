@@ -116,7 +116,7 @@ def retry(function, retries=3):
     try:
       result = function()
     except Exception as e:
-      if isinstance(e, requests.HTTPError) and e.response and e.response.text:
+      if isinstance(e, requests.HTTPError) and e.response:
         print('Request failed, body: %s' % e.response.text)
 
       if i == retries - 1:
