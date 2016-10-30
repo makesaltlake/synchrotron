@@ -1,1 +1,2 @@
-web: FLASK_APP=synchrotron.py flask run
+web: gunicorn -b 0.0.0.0:$PORT synchrotron.web:app
+work: python -m synchrotron.work
