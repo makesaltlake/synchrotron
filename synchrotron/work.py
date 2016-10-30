@@ -68,7 +68,7 @@ class SynchrotronWorker:
     print('sync at %s' % time.ctime())
 
   def trigger(self, address):
-    user = self.get_user_by(email=address)
+    user = self.get_wordpress_user_by(email=address)
     if user is None:
       self.send_slack_message("MemberPress told me there's a new user with address %r but WordPress doesn't seem to know about it" % address)
       return
