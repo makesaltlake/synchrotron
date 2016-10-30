@@ -1,6 +1,7 @@
 
 import redis
 import os
+import time
 
 
 class SynchrotronWorker:
@@ -25,7 +26,7 @@ class SynchrotronWorker:
       sync()
 
   def sync(self):
-    pass
+    print('sync at %s' % time.ctime())
 
 
 if __name__ == '__main__':
