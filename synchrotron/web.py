@@ -1,6 +1,6 @@
 
 import flask
-from flask import request
+from flask import request, abort
 import redis
 import os
 import re
