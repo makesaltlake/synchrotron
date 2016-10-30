@@ -21,6 +21,7 @@ class SynchrotronWorker:
 
     # then listen for requests
     for message in p.listen():
+      print('received message: %s' % message)
       if message['channel'] == 'sync':
         # TODO: ignore multiple sync messages all sent in short order
         self.sync()
