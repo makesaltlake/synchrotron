@@ -16,6 +16,7 @@ def index():
 @app.route('/trigger', methods=['POST'])
 def trigger():
   params = {**request.args, **request.form}
+  print('params are %s' % params)
 
   token = params['token']
   required_token = os.getenv('TRIGGER_TOKEN')
