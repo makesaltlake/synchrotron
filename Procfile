@@ -1,1 +1,1 @@
-web: flask synchrotron.py
+web: python3 synchrotron.py
