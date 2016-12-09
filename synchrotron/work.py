@@ -8,16 +8,24 @@ import requests
 import xmlrpc.client
 from urllib.parse import urljoin
 import enum
+import stripe
 
 InviteStatus = enum.Enum('InviteStatus', 'already_invited already_in_team successful')
+BASELINE_SUBSCRIPTION = 50
 
 
 class SynchrotronWorker:
   def __init__(self):
     self.slack = slackclient.SlackClient(os.getenv('SLACK_TOKEN'))
     self.slack_channel = os.getenv('SLACK_CHANNEL')
+    self.stripe_key = os.getenv('STRIPE_SECRET_KEY')
+
+  def setup(self):
+    stripe.api_key = self.stripe_key
 
   def run(self):
+    self.setup()
+
     r = redis.Redis.from_url(os.getenv('REDIS_URL'), charset='utf-8', decode_responses=True)
 
     p = r.pubsub(ignore_subscribe_messages=True)
@@ -26,6 +34,8 @@ class SynchrotronWorker:
     for message in p.listen():
       if message['channel'] == 'trigger':
         self.trigger(message['data'])
+      elif message['channel'] == 'report':
+        self.report()
 
   def trigger(self, address):
     # invite_status = self.invite_to_slack(address)
@@ -37,6 +47,33 @@ class SynchrotronWorker:
     invite_observation = 'Automatic slack invites for new members are disabled right now.'
 
     self.send_slack_message('New member: %s. %s' % (address, invite_observation))
+
+  def report(self):
+    count = 0
+    per_month = 0.0
+    weird = 0
+
+    for subscription in stripe.Subscription.list().auto_paging_iter():
+      count += 1
+      if subscription.status in ('active', 'trialing'):
+        if subscription.plan.interval != 'month':
+          raise RuntimeError('wtf')
+        per_month += subscription.plan.amount / subscription.plan.interval_count
+      else:
+        weird += 1
+
+    if weird > 0:
+      weird_message = " %s subscriptions in a weird state (possibly the user's card was declined)." % weird
+    else:
+      weird_message = ''
+
+    self.send_slack_message(":wave: %s subscriptions totaling $%.2f/month before Stripe transaction fees, equivalent to %.1f $%s/month memberships.%s" % (
+      count,
+      per_month / 100,
+      per_month / 100 / BASELINE_SUBSCRIPTION,
+      BASELINE_SUBSCRIPTION,
+      weird_message
+    ))
 
   def invite_to_slack(self, address):
     response = self.slack.api_call('users.admin.invite', email=address, set_active=True)
