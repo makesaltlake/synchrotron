@@ -3,3 +3,4 @@ gunicorn==19.6.0
 redis==2.10.5
 slackclient==1.0.2
 stripe==1.43.0
+apscheduler==3.3.0
