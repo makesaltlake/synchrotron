@@ -9,9 +9,17 @@ import xmlrpc.client
 from urllib.parse import urljoin
 import enum
 import stripe
+from collections import namedtuple
 
 InviteStatus = enum.Enum('InviteStatus', 'already_invited already_in_team successful')
-BASELINE_SUBSCRIPTION = 50
+Report = namedtuple('Report', [
+  'count',
+  'per_month_average',
+  'per_month_average_before_fees',
+  'per_month_min',
+  'per_month_max',
+  'past_due_count'
+])
 
 
 class SynchrotronWorker:
@@ -48,32 +56,52 @@ class SynchrotronWorker:
 
     self.send_slack_message('New member: %s. %s' % (address, invite_observation))
 
-  def report(self):
+  def create_report(self):
     count = 0
-    per_month = 0.0
-    weird = 0
+    per_month_average = 0.0
+    per_month_average_before_fees = 0.0
+    per_month_min = 0.0
+    per_month_max = 0.0
+    past_due_count = 0
 
     for subscription in stripe.Subscription.list().auto_paging_iter():
       count += 1
       if subscription.status in ('active', 'trialing'):
         if subscription.plan.interval != 'month':
           raise RuntimeError('wtf')
-        per_month += subscription.plan.amount / subscription.plan.interval_count
+        amount_after_transaction_fees = subscription.plan.amount * (1 - 0.029) - 0.3
+        per_month_average += amount_after_transaction_fees / subscription.plan.interval_count
+        per_month_average_before_fees += subscription.plan.amount / subscription.plan.interval_count
+        per_month_max += amount_after_transaction_fees
+        if subscription.plan.interval_count == 1:
+          per_month_min += amount_after_transaction_fees
       else:
-        weird += 1
+        past_due_count += 1
 
-    if weird > 0:
-      weird_message = " %s subscriptions in a weird state (possibly the user's card was declined)." % weird
-    else:
-      weird_message = ''
-
-    self.send_slack_message(":wave: %s subscriptions totaling $%.2f/month before Stripe transaction fees, equivalent to %.1f $%s/month memberships.%s" % (
+    return Report(
       count,
-      per_month / 100,
-      per_month / 100 / BASELINE_SUBSCRIPTION,
-      BASELINE_SUBSCRIPTION,
-      weird_message
-    ))
+      round(per_month_average / 100, 2),
+      round(per_month_average_before_fees / 100, 2),
+      round(per_month_min / 100, 2),
+      round(per_month_max / 100, 2),
+      past_due_count
+    )
+
+  def report(self):
+    report = self.create_report()
+
+    fields = [
+      {'title': 'Paid memberships', 'value': str(report.count)},
+      {'title': 'Monthly average before Stripe fees', 'value': '$%.2f' % report.per_month_average_before_fees, 'short': True},
+      {'title': 'Monthly average after Stripe fees', 'value': '$%.2f' % report.per_month_average, 'short': True},
+      {'title': 'Min', 'value': '$%.2f' % report.per_month_min, 'short': True},
+      {'title': 'Max', 'value': '$%.2f' % report.per_month_max, 'short': True}
+    ]
+
+    if report.past_due_count > 0:
+      fields.append({'title': 'Past due memberships', 'value': str(report.past_due_count)})
+
+    self.send_slack_message(attachments=[{'fields': fields}])
 
   def invite_to_slack(self, address):
     response = self.slack.api_call('users.admin.invite', email=address, set_active=True)
@@ -86,8 +114,8 @@ class SynchrotronWorker:
     else:
       return response['error']
 
-  def send_slack_message(self, message):
-    self.slack.api_call('chat.postMessage', channel=self.slack_channel, text=message, as_user=True)
+  def send_slack_message(self, **params):
+    self.slack.api_call('chat.postMessage', **{'channel': self.slack_channel, 'as_user': True, **params})
 
 
 def retry(function, retries=3):
