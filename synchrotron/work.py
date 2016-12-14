@@ -37,7 +37,7 @@ class SynchrotronWorker:
     r = redis.Redis.from_url(os.getenv('REDIS_URL'), charset='utf-8', decode_responses=True)
 
     p = r.pubsub(ignore_subscribe_messages=True)
-    p.subscribe('trigger', 'sync')
+    p.subscribe('trigger', 'sync', 'report')
 
     for message in p.listen():
       if message['channel'] == 'trigger':
