@@ -16,8 +16,7 @@ Report = namedtuple('Report', [
   'count',
   'per_month_average',
   'per_month_average_before_fees',
-  'per_month_min',
-  'per_month_max',
+  'per_month_baseline',
   'past_due_count'
 ])
 
@@ -60,8 +59,7 @@ class SynchrotronWorker:
     count = 0
     per_month_average = 0.0
     per_month_average_before_fees = 0.0
-    per_month_min = 0.0
-    per_month_max = 0.0
+    per_month_baseline = 0.0
     past_due_count = 0
 
     for subscription in stripe.Subscription.list().auto_paging_iter():
@@ -72,9 +70,8 @@ class SynchrotronWorker:
         amount_after_transaction_fees = subscription.plan.amount * (1 - 0.029) - 0.3
         per_month_average += amount_after_transaction_fees / subscription.plan.interval_count
         per_month_average_before_fees += subscription.plan.amount / subscription.plan.interval_count
-        per_month_max += amount_after_transaction_fees
         if subscription.plan.interval_count == 1:
-          per_month_min += amount_after_transaction_fees
+          per_month_baseline += amount_after_transaction_fees
       else:
         past_due_count += 1
 
@@ -82,8 +79,7 @@ class SynchrotronWorker:
       count,
       round(per_month_average / 100, 2),
       round(per_month_average_before_fees / 100, 2),
-      round(per_month_min / 100, 2),
-      round(per_month_max / 100, 2),
+      round(per_month_baseline / 100, 2),
       past_due_count
     )
 
@@ -94,8 +90,7 @@ class SynchrotronWorker:
       {'title': 'Paid memberships', 'value': str(report.count)},
       {'title': 'Monthly average before Stripe fees', 'value': '$%.2f' % report.per_month_average_before_fees, 'short': True},
       {'title': 'Monthly average after Stripe fees', 'value': '$%.2f' % report.per_month_average, 'short': True},
-      {'title': 'Min', 'value': '$%.2f' % report.per_month_min, 'short': True},
-      {'title': 'Max', 'value': '$%.2f' % report.per_month_max, 'short': True}
+      {'title': 'Monthly baseline after Stripe fees', 'value': '$%.2f' % report.per_month_baseline}
     ]
 
     if report.past_due_count > 0:
