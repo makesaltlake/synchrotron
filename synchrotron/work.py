@@ -125,12 +125,38 @@ class SynchrotronWorker:
       attachments=[self.create_report_attachment()]
     )
 
+  @stripe_event_processor('customer.subscription.deleted')
+  def process_customer_subscription_deleted(self, event):
+    self.send_slack_message(
+      text="%s's subscription has been cancelled." % self.summarize_customer(event['data']['object']['customer']),
+      attachments=[self.create_report_attachment()]
+    )
+
+  @stripe_event_processor('customer.subscription.updated')
+  def process_customer_subscription_updated(self, event):
+    self.send_slack_message(
+      text="%s's subscription has been updated." % self.summarize_customer(event['data']['object']['customer']),
+      attachments=[self.create_report_attachment()]
+    )
+
+  @stripe_event_processor('invoice.payment_failed')
+  def process_invoice_payment_failed(self, event):
+    self.send_slack_message(
+      text="%s's payment failed." % self.summarize_customer(event['data']['object']['customer'])
+    )
+
+  @stripe_event_processor('charge.dispute.created')
+  def process_charge_dispute_created(self, event):
+    self.send_slack_message(
+      text="DISPUTED PAYMENT: a charge has been disputed."
+    )
+
   def summarize_customer(self, customer_id):
     try:
       customer = stripe.Customer.retrieve(customer_id)
     except stripe.error.InvalidRequestError:
       # probably a webhook test or something, in which case we get a customer id that doesn't actually exist
-      return 'unknown'
+      return customer_id
     else:
       return '%s (%s)' % (customer.description, customer.email)
 
