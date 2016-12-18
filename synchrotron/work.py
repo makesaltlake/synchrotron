@@ -142,13 +142,13 @@ class SynchrotronWorker:
   @stripe_event_processor('invoice.payment_failed')
   def process_invoice_payment_failed(self, event):
     self.send_slack_message(
-      text="%s's payment failed." % self.summarize_customer(event['data']['object']['customer'])
+      text=":scream: %s's payment failed" % self.summarize_customer(event['data']['object']['customer'])
     )
 
   @stripe_event_processor('charge.dispute.created')
   def process_charge_dispute_created(self, event):
     self.send_slack_message(
-      text="DISPUTED PAYMENT: a charge has been disputed."
+      text=":beaker: A charge has been disputed :alert:"
     )
 
   def summarize_customer(self, customer_id):
