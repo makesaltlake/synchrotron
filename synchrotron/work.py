@@ -10,6 +10,7 @@ import enum
 import stripe
 from collections import namedtuple
 from synchrotron.util import redis_connection
+import json
 
 InviteStatus = enum.Enum('InviteStatus', 'already_invited already_in_team successful')
 Report = namedtuple('Report', [
@@ -19,6 +20,15 @@ Report = namedtuple('Report', [
   'per_month_baseline',
   'past_due_count'
 ])
+
+stripe_event_processors = {}
+
+
+def stripe_event_processor(event_type):
+  def decorator(function):
+    stripe_event_processors[event_type] = function
+    return function
+  return decorator
 
 
 class SynchrotronWorker:
@@ -36,13 +46,15 @@ class SynchrotronWorker:
     r = redis_connection()
 
     p = r.pubsub(ignore_subscribe_messages=True)
-    p.subscribe('trigger', 'sync', 'report')
+    p.subscribe('trigger', 'sync', 'report', 'stripe_event')
 
     for message in p.listen():
       if message['channel'] == 'trigger':
         self.trigger(message['data'])
       elif message['channel'] == 'report':
         self.report()
+      elif message['channel'] == 'stripe_event':
+        self.process_stripe_event(message['data'])
 
   def trigger(self, address):
     # invite_status = self.invite_to_slack(address)
@@ -97,6 +109,15 @@ class SynchrotronWorker:
       fields.append({'title': 'Past due memberships', 'value': str(report.past_due_count)})
 
     self.send_slack_message(attachments=[{'fields': fields}])
+
+  def process_stripe_event(self, data):
+    event = json.loads(data)
+    if event['type'] in stripe_event_processors:
+      stripe_event_processors[event['type']].__get__(self, type(self))(event)
+
+  @stripe_event_processor('customer.subscription.created')
+  def process_customer_subscription_created(self, event):
+    self.send_slack_message(text='stripe subscription created!')
 
   def invite_to_slack(self, address):
     response = self.slack.api_call('users.admin.invite', email=address, set_active=True)
