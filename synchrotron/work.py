@@ -120,7 +120,19 @@ class SynchrotronWorker:
 
   @stripe_event_processor('customer.subscription.created')
   def process_customer_subscription_created(self, event):
-    self.send_slack_message(text='stripe subscription created!', attachments=[self.create_report_attachment()])
+    self.send_slack_message(
+      text='New member: %s' % self.summarize_customer(event['data']['object']['customer']),
+      attachments=[self.create_report_attachment()]
+    )
+
+  def summarize_customer(self, customer_id):
+    try:
+      customer = stripe.Customer.retrieve(customer_id)
+    except stripe.error.InvalidRequestError:
+      # probably a webhook test or something, in which case we get a customer id that doesn't actually exist
+      return 'unknown'
+    else:
+      return '%s (%s)' % (customer.description, customer.email)
 
   def invite_to_slack(self, address):
     response = self.slack.api_call('users.admin.invite', email=address, set_active=True)
