@@ -95,7 +95,7 @@ class SynchrotronWorker:
       past_due_count
     )
 
-  def report(self):
+  def create_report_attachment(self):
     report = self.create_report()
 
     fields = [
@@ -108,7 +108,10 @@ class SynchrotronWorker:
     if report.past_due_count > 0:
       fields.append({'title': 'Past due memberships', 'value': str(report.past_due_count)})
 
-    self.send_slack_message(attachments=[{'fields': fields}])
+    return {'fields': fields}
+
+  def report(self):
+    self.send_slack_message(attachments=[self.create_report_attachment()])
 
   def process_stripe_event(self, data):
     event = json.loads(data)
@@ -117,7 +120,7 @@ class SynchrotronWorker:
 
   @stripe_event_processor('customer.subscription.created')
   def process_customer_subscription_created(self, event):
-    self.send_slack_message(text='stripe subscription created!')
+    self.send_slack_message(text='stripe subscription created!', attachments=[self.create_report_attachment()])
 
   def invite_to_slack(self, address):
     response = self.slack.api_call('users.admin.invite', email=address, set_active=True)
