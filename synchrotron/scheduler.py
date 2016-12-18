@@ -1,15 +1,14 @@
 
 from apscheduler.schedulers.blocking import BlockingScheduler
-import redis
 import os
+from synchrotron.util import redis_connection
 
 scheduler = BlockingScheduler()
 
 
 @scheduler.scheduled_job('cron', hour=3, timezone='America/Denver')
 def trigger_report():
-    r = redis.Redis.from_url(os.getenv('REDIS_URL'), charset='utf-8', decode_responses=True)
-    r.publish('report', '')
+    redis_connection().publish('report', '')
 
 
 if __name__ == '__main__':

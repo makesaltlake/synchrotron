@@ -1,5 +1,4 @@
 
-import redis
 import os
 import time
 import slackclient
@@ -10,6 +9,7 @@ from urllib.parse import urljoin
 import enum
 import stripe
 from collections import namedtuple
+from synchrotron.util import redis_connection
 
 InviteStatus = enum.Enum('InviteStatus', 'already_invited already_in_team successful')
 Report = namedtuple('Report', [
@@ -33,7 +33,7 @@ class SynchrotronWorker:
   def run(self):
     self.setup()
 
-    r = redis.Redis.from_url(os.getenv('REDIS_URL'), charset='utf-8', decode_responses=True)
+    r = redis_connection()
 
     p = r.pubsub(ignore_subscribe_messages=True)
     p.subscribe('trigger', 'sync', 'report')
