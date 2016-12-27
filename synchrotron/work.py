@@ -132,13 +132,6 @@ class SynchrotronWorker:
       attachments=[self.create_report_attachment()]
     )
 
-  @stripe_event_processor('customer.subscription.updated')
-  def process_customer_subscription_updated(self, event):
-    self.send_slack_message(
-      text="%s's subscription has been updated." % self.summarize_customer(event['data']['object']['customer']),
-      attachments=[self.create_report_attachment()]
-    )
-
   @stripe_event_processor('invoice.payment_failed')
   def process_invoice_payment_failed(self, event):
     self.send_slack_message(
