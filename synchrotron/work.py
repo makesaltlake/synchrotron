@@ -18,10 +18,12 @@ Report = namedtuple('Report', [
   'current_ongoing_count',
   'past_due_members',
   'pending_cancellation_members',
+  'long_trial_members',
   'per_month_average',
   'per_month_average_before_fees',
   'per_month_baseline',
 ])
+THIRTY_DAYS = 86400 * 30
 
 stripe_event_processors = {}
 
@@ -74,6 +76,7 @@ class SynchrotronWorker:
     current_ongoing_count = 0
     past_due_members = []
     pending_cancellation_members = []
+    long_trial_members = []
     per_month_average = 0.0
     per_month_average_before_fees = 0.0
     per_month_baseline = 0.0
@@ -85,6 +88,8 @@ class SynchrotronWorker:
           raise RuntimeError('wtf')
         if subscription.cancel_at_period_end:
           pending_cancellation_members.append(self.summarize_customer(subscription.customer))
+        elif subscription.trial_end and (subscription.trial_end - THIRTY_DAYS) > time.time():
+          long_trial_members.append(self.summarize_customer(subscription.customer))
         else:
           current_ongoing_count += 1
           amount_after_transaction_fees = subscription.plan.amount * (1 - 0.029) - 0.3
@@ -100,6 +105,7 @@ class SynchrotronWorker:
       current_ongoing_count=current_ongoing_count,
       past_due_members=past_due_members,
       pending_cancellation_members=pending_cancellation_members,
+      long_trial_members=long_trial_members,
       per_month_average=round(per_month_average / 100, 2),
       per_month_average_before_fees=round(per_month_average_before_fees / 100, 2),
       per_month_baseline=round(per_month_baseline / 100, 2)
@@ -112,7 +118,8 @@ class SynchrotronWorker:
       {'title': 'Total subscriptions', 'value': str(report.total_count), 'short': True},
       {'title': 'Current, ongoing subscriptions', 'value': str(report.current_ongoing_count), 'short': True},
       {'title': 'Past due subscriptions', 'value': str(len(report.past_due_members)), 'short': True},
-      {'title': 'Subscriptions pending cancellation', 'value': str(len(report.pending_cancellation_members)), 'short': True}
+      {'title': 'Subscriptions pending cancellation', 'value': str(len(report.pending_cancellation_members)), 'short': True},
+      {'title': 'Subscriptions with long trial periods', 'value': str(len(report.long_trial_members)), 'short': True}
     ]
     projection_fields = [
       {'title': 'Monthly average before Stripe fees', 'value': '$%.2f' % report.per_month_average_before_fees, 'short': True},
