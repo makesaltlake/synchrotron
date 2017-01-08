@@ -14,11 +14,13 @@ import json
 
 InviteStatus = enum.Enum('InviteStatus', 'already_invited already_in_team successful')
 Report = namedtuple('Report', [
-  'count',
+  'total_count',
+  'current_ongoing_count',
+  'past_due_count',
+  'pending_cancellation_count',
   'per_month_average',
   'per_month_average_before_fees',
   'per_month_baseline',
-  'past_due_count'
 ])
 
 stripe_event_processors = {}
@@ -68,50 +70,69 @@ class SynchrotronWorker:
     self.send_slack_message('New member: %s. %s' % (address, invite_observation))
 
   def create_report(self):
-    count = 0
+    total_count = 0
+    current_ongoing_count = 0
+    past_due_count = 0
+    pending_cancellation_count = 0
     per_month_average = 0.0
     per_month_average_before_fees = 0.0
     per_month_baseline = 0.0
-    past_due_count = 0
 
     for subscription in stripe.Subscription.list().auto_paging_iter():
-      count += 1
+      total_count += 1
       if subscription.status in ('active', 'trialing'):
         if subscription.plan.interval != 'month':
           raise RuntimeError('wtf')
-        amount_after_transaction_fees = subscription.plan.amount * (1 - 0.029) - 0.3
-        per_month_average += amount_after_transaction_fees / subscription.plan.interval_count
-        per_month_average_before_fees += subscription.plan.amount / subscription.plan.interval_count
-        if subscription.plan.interval_count == 1:
-          per_month_baseline += amount_after_transaction_fees
+        if subscription.cancel_at_period_end:
+          pending_cancellation_count += 1
+        else:
+          current_ongoing_count += 1
+          amount_after_transaction_fees = subscription.plan.amount * (1 - 0.029) - 0.3
+          per_month_average += amount_after_transaction_fees / subscription.plan.interval_count
+          per_month_average_before_fees += subscription.plan.amount / subscription.plan.interval_count
+          if subscription.plan.interval_count == 1:
+            per_month_baseline += amount_after_transaction_fees
       else:
         past_due_count += 1
 
     return Report(
-      count,
-      round(per_month_average / 100, 2),
-      round(per_month_average_before_fees / 100, 2),
-      round(per_month_baseline / 100, 2),
-      past_due_count
+      total_count=total_count,
+      current_ongoing_count=current_ongoing_count,
+      past_due_count=past_due_count,
+      pending_cancellation_count=pending_cancellation_count,
+      per_month_average=round(per_month_average / 100, 2),
+      per_month_average_before_fees=round(per_month_average_before_fees / 100, 2),
+      per_month_baseline=round(per_month_baseline / 100, 2)
     )
 
-  def create_report_attachment(self):
+  def create_report_attachments(self):
     report = self.create_report()
 
-    fields = [
-      {'title': 'Paid memberships', 'value': str(report.count)},
+    subscription_fields = [
+      {'title': 'Total subscriptions', 'value': str(report.total_count), 'short': True},
+      {'title': 'Current, ongoing subscriptions', 'value': str(report.current_ongoing_count), 'short': True},
+      {'title': 'Past due subscriptions', 'value': str(report.past_due_count), 'short': True},
+      {'title': 'Subscriptions pending cancellation', 'value': str(report.pending_cancellation_count), 'short': True}
+    ]
+    projection_fields = [
       {'title': 'Monthly average before Stripe fees', 'value': '$%.2f' % report.per_month_average_before_fees, 'short': True},
       {'title': 'Monthly average after Stripe fees', 'value': '$%.2f' % report.per_month_average, 'short': True},
       {'title': 'Monthly baseline after Stripe fees', 'value': '$%.2f' % report.per_month_baseline}
     ]
 
-    if report.past_due_count > 0:
-      fields.append({'title': 'Past due memberships', 'value': str(report.past_due_count)})
-
-    return {'fields': fields}
+    return [
+      {
+        'pretext': 'Subscription stats:',
+        'fields': subscription_fields
+      },
+      {
+        'pretext': 'Income projections for current, ongoing subscriptions:',
+        'fields': projection_fields
+      }
+    ]
 
   def report(self):
-    self.send_slack_message(attachments=[self.create_report_attachment()])
+    self.send_slack_message(attachments=self.create_report_attachments())
 
   def process_stripe_event(self, data):
     event = json.loads(data)
@@ -122,20 +143,39 @@ class SynchrotronWorker:
   def process_customer_subscription_created(self, event):
     self.send_slack_message(
       text='New member: %s' % self.summarize_customer(event['data']['object']['customer']),
-      attachments=[self.create_report_attachment()]
+      attachments=self.create_report_attachments()
     )
 
   @stripe_event_processor('customer.subscription.deleted')
   def process_customer_subscription_deleted(self, event):
     self.send_slack_message(
       text="%s's subscription has been cancelled." % self.summarize_customer(event['data']['object']['customer']),
-      attachments=[self.create_report_attachment()]
+      attachments=self.create_report_attachments()
     )
+
+  @stripe_event_processor('customer.subscription.updated')
+  def process_customer_subscription_updated(self, event):
+    cancel_at_period_end = event['data']['object']['cancel_at_period_end']
+    if cancel_at_period_end != event['data']['previous_attributes']['cancel_at_period_end']:
+      if cancel_at_period_end:
+        self.send_slack_message(
+          text="%s's subscription will be cancelled on %s" % (
+            self.summarize_customer(event['data']['object']['customer']),
+            self.month_and_day(event['data']['object']['current_period_end'])
+          ),
+          attachments=self.create_report_attachments()
+        )
+      else:
+        self.send_slack_message(
+          text="%s's subscription will no longer be cancelled." % self.summarize_customer(event['data']['object']['customer']),
+          attachments=self.create_report_attachments()
+        )
 
   @stripe_event_processor('invoice.payment_failed')
   def process_invoice_payment_failed(self, event):
     self.send_slack_message(
-      text="%s's payment failed :alert:" % self.summarize_customer(event['data']['object']['customer'])
+      text="%s's payment failed :alert:" % self.summarize_customer(event['data']['object']['customer']),
+      attachments=self.create_report_attachments()
     )
 
   @stripe_event_processor('charge.dispute.created')
@@ -157,6 +197,10 @@ class SynchrotronWorker:
         return customer.description
       else:
         return '%s (%s)' % (customer.description, customer.email)
+
+  def month_and_day(self, epoch_time):
+    # strftime on Windows doesn't support the - in %-d. Might want to format this a different way...
+    return time.strftime('%B %-d', time.gmtime(epoch_time))
 
   def invite_to_slack(self, address):
     response = self.slack.api_call('users.admin.invite', email=address, set_active=True)
