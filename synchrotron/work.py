@@ -16,8 +16,8 @@ InviteStatus = enum.Enum('InviteStatus', 'already_invited already_in_team succes
 Report = namedtuple('Report', [
   'total_count',
   'current_ongoing_count',
-  'past_due_count',
-  'pending_cancellation_count',
+  'past_due_members',
+  'pending_cancellation_members',
   'per_month_average',
   'per_month_average_before_fees',
   'per_month_baseline',
@@ -72,19 +72,19 @@ class SynchrotronWorker:
   def create_report(self):
     total_count = 0
     current_ongoing_count = 0
-    past_due_count = 0
-    pending_cancellation_count = 0
+    past_due_members = []
+    pending_cancellation_members = []
     per_month_average = 0.0
     per_month_average_before_fees = 0.0
     per_month_baseline = 0.0
 
-    for subscription in stripe.Subscription.list().auto_paging_iter():
+    for subscription in stripe.Subscription.list(expand=['data.customer']).auto_paging_iter():
       total_count += 1
       if subscription.status in ('active', 'trialing'):
         if subscription.plan.interval != 'month':
           raise RuntimeError('wtf')
         if subscription.cancel_at_period_end:
-          pending_cancellation_count += 1
+          pending_cancellation_members.append(self.summarize_customer(subscription.customer))
         else:
           current_ongoing_count += 1
           amount_after_transaction_fees = subscription.plan.amount * (1 - 0.029) - 0.3
@@ -93,13 +93,13 @@ class SynchrotronWorker:
           if subscription.plan.interval_count == 1:
             per_month_baseline += amount_after_transaction_fees
       else:
-        past_due_count += 1
+        past_due_members.append(self.summarize_customer(subscription.customer))
 
     return Report(
       total_count=total_count,
       current_ongoing_count=current_ongoing_count,
-      past_due_count=past_due_count,
-      pending_cancellation_count=pending_cancellation_count,
+      past_due_members=past_due_members,
+      pending_cancellation_members=pending_cancellation_members,
       per_month_average=round(per_month_average / 100, 2),
       per_month_average_before_fees=round(per_month_average_before_fees / 100, 2),
       per_month_baseline=round(per_month_baseline / 100, 2)
@@ -111,8 +111,8 @@ class SynchrotronWorker:
     subscription_fields = [
       {'title': 'Total subscriptions', 'value': str(report.total_count), 'short': True},
       {'title': 'Current, ongoing subscriptions', 'value': str(report.current_ongoing_count), 'short': True},
-      {'title': 'Past due subscriptions', 'value': str(report.past_due_count), 'short': True},
-      {'title': 'Subscriptions pending cancellation', 'value': str(report.pending_cancellation_count), 'short': True}
+      {'title': 'Past due subscriptions', 'value': str(len(report.past_due_members)), 'short': True},
+      {'title': 'Subscriptions pending cancellation', 'value': str(len(report.pending_cancellation_members)), 'short': True}
     ]
     projection_fields = [
       {'title': 'Monthly average before Stripe fees', 'value': '$%.2f' % report.per_month_average_before_fees, 'short': True},
@@ -120,7 +120,7 @@ class SynchrotronWorker:
       {'title': 'Monthly baseline after Stripe fees', 'value': '$%.2f' % report.per_month_baseline}
     ]
 
-    return [
+    attachments = [
       {
         'pretext': 'Subscription stats:',
         'fields': subscription_fields
@@ -130,6 +130,14 @@ class SynchrotronWorker:
         'fields': projection_fields
       }
     ]
+
+    if report.past_due_members:
+      attachments.append({
+        'pretext': 'Members with past due subscriptions:',
+        'text': '\n'.join(report.past_due_members)
+      })
+
+    return attachments
 
   def report(self):
     self.send_slack_message(attachments=self.create_report_attachments())
@@ -184,19 +192,21 @@ class SynchrotronWorker:
       text=":beaker: A charge has been disputed :alert2:"
     )
 
-  def summarize_customer(self, customer_id):
-    try:
-      customer = stripe.Customer.retrieve(customer_id)
-    except stripe.error.InvalidRequestError:
-      # probably a webhook test or something, in which case we get a customer id that doesn't actually exist
-      return customer_id
+  def summarize_customer(self, customer):
+    # Fetch the customer if we were given an id
+    if isinstance(customer, str):
+      try:
+        customer = stripe.Customer.retrieve(customer)
+      except stripe.error.InvalidRequestError:
+        # probably a webhook test or something, in which case we get a customer id that doesn't actually exist
+        return customer
+
+    # Paid Memberships Pro creates customer descriptions of the form "name (email)" while MemberPress just sets them
+    # to "name". Detect the former and avoid duplicating the email address.
+    if customer.email in customer.description:
+      return customer.description
     else:
-      # Paid Memberships Pro creates customer descriptions of the form "name (email)" while MemberPress just sets them
-      # to "name". Detect the former and avoid duplicating the email address.
-      if customer.email in customer.description:
-        return customer.description
-      else:
-        return '%s (%s)' % (customer.description, customer.email)
+      return '%s (%s)' % (customer.description, customer.email)
 
   def month_and_day(self, epoch_time):
     # strftime on Windows doesn't support the - in %-d. Might want to format this a different way...
