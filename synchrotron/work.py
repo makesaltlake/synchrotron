@@ -23,7 +23,7 @@ Report = namedtuple('Report', [
   'per_month_average_before_fees',
   'per_month_baseline',
 ])
-THIRTY_DAYS = 86400 * 30
+THIRTY_TWO_DAYS = 86400 * 32
 
 stripe_event_processors = {}
 
@@ -88,7 +88,7 @@ class SynchrotronWorker:
           raise RuntimeError('wtf')
         if subscription.cancel_at_period_end:
           pending_cancellation_members.append(self.summarize_customer(subscription.customer))
-        elif subscription.trial_end and (subscription.trial_end - THIRTY_DAYS) > time.time():
+        elif subscription.trial_end and (subscription.trial_end - THIRTY_TWO_DAYS) > time.time():
           long_trial_members.append(self.summarize_customer(subscription.customer))
         else:
           current_ongoing_count += 1
