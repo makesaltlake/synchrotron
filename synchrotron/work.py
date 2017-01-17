@@ -171,7 +171,8 @@ class SynchrotronWorker:
   @stripe_event_processor('customer.subscription.updated')
   def process_customer_subscription_updated(self, event):
     cancel_at_period_end = event['data']['object']['cancel_at_period_end']
-    if cancel_at_period_end != event['data']['previous_attributes']['cancel_at_period_end']:
+    previous_attributes = event['data'].get('previous_attributes', {})
+    if 'cancel_at_period_end' in previous_attributes and cancel_at_period_end != previous_attributes['cancel_at_period_end']:
       if cancel_at_period_end:
         self.send_slack_message(
           text="%s's subscription will be cancelled on %s" % (
