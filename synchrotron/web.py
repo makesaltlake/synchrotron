@@ -19,6 +19,11 @@ def index():
   return 'ohai'
 
 
+@app.route('/robots.txt')
+def robots():
+  return "User-agent: *\nDisallow: /\n"
+
+
 @app.route('/trigger', methods=['POST'])
 def trigger():
   check_token(request.form['token'], 'TRIGGER_TOKEN')
