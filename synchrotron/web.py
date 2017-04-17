@@ -3,7 +3,7 @@ import flask
 from flask import request, abort
 import os
 import re
-from synchrotron.util import redis_connection, setup_stripe
+from synchrotron.util import redis_connection, setup_stripe, summarize_stripe_customer
 import json
 import stripe
 import io
@@ -47,20 +47,28 @@ def stripe_webhook():
 def membership_delta_report():
   check_token(request.args['token'], 'REPORT_TOKEN')
 
+  include_customers = os.getenv('MEMBERSHIP_REPORTS_INCLUDE_CUSTOMERS') == '1'
+
   events = []
-  for subscription in stripe.Subscription.list(status='all', limit=100).auto_paging_iter():
-    events.append((datetime.utcfromtimestamp(subscription.start), 1))
+  for subscription in stripe.Subscription.list(status='all', limit=100, expand=['data.customer']).auto_paging_iter():
+    events.append((datetime.utcfromtimestamp(subscription.start), 1, subscription.customer))
     if subscription.ended_at:
-      events.append((datetime.utcfromtimestamp(subscription.ended_at), -1))
+      events.append((datetime.utcfromtimestamp(subscription.ended_at), -1, subscription.customer))
 
   events.sort()
 
   output = io.StringIO()
   writer = csv.writer(output)
-  writer.writerow(['Date', 'Membership Change'])
+  if include_customers:
+    writer.writerow(['Date', 'Membership Change', 'Description'])
+  else:
+    writer.writerow(['Date', 'Membership Change'])
 
-  for date, membership_change in events:
-    writer.writerow([date.strftime('%Y-%m-%d %H:%M:%S'), membership_change])
+  for date, membership_change, customer in events:
+    if include_customers:
+      writer.writerow([date.strftime('%Y-%m-%d %H:%M:%S'), membership_change, summarize_stripe_customer(customer)])
+    else:
+      writer.writerow([date.strftime('%Y-%m-%d %H:%M:%S'), membership_change])
 
   return flask.Response(output.getvalue(), mimetype='text/csv')
 

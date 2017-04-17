@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 import enum
 import stripe
 from collections import namedtuple
-from synchrotron.util import redis_connection
+from synchrotron.util import redis_connection, summarize_stripe_customer
 import json
 
 InviteStatus = enum.Enum('InviteStatus', 'already_invited already_in_team successful')
@@ -87,9 +87,9 @@ class SynchrotronWorker:
         if subscription.plan.interval != 'month':
           raise RuntimeError('wtf')
         if subscription.cancel_at_period_end:
-          pending_cancellation_members.append(self.summarize_customer(subscription.customer))
+          pending_cancellation_members.append(summarize_stripe_customer(subscription.customer))
         elif subscription.trial_end and (subscription.trial_end - THIRTY_TWO_DAYS) > time.time():
-          long_trial_members.append(self.summarize_customer(subscription.customer))
+          long_trial_members.append(summarize_stripe_customer(subscription.customer))
         else:
           current_ongoing_count += 1
           amount_after_transaction_fees = subscription.plan.amount * (1 - 0.029) - 0.3
@@ -98,7 +98,7 @@ class SynchrotronWorker:
           if subscription.plan.interval_count == 1:
             per_month_baseline += amount_after_transaction_fees
       else:
-        past_due_members.append(self.summarize_customer(subscription.customer))
+        past_due_members.append(summarize_stripe_customer(subscription.customer))
 
     return Report(
       total_count=total_count,
@@ -157,14 +157,14 @@ class SynchrotronWorker:
   @stripe_event_processor('customer.subscription.created')
   def process_customer_subscription_created(self, event):
     self.send_slack_message(
-      text='New member: %s' % self.summarize_customer(event['data']['object']['customer']),
+      text='New member: %s' % summarize_stripe_customer(event['data']['object']['customer']),
       attachments=self.create_report_attachments()
     )
 
   @stripe_event_processor('customer.subscription.deleted')
   def process_customer_subscription_deleted(self, event):
     self.send_slack_message(
-      text="%s's subscription has been cancelled." % self.summarize_customer(event['data']['object']['customer']),
+      text="%s's subscription has been cancelled." % summarize_stripe_customer(event['data']['object']['customer']),
       attachments=self.create_report_attachments()
     )
 
@@ -176,21 +176,21 @@ class SynchrotronWorker:
       if cancel_at_period_end:
         self.send_slack_message(
           text="%s's subscription will be cancelled on %s" % (
-            self.summarize_customer(event['data']['object']['customer']),
+            summarize_stripe_customer(event['data']['object']['customer']),
             self.month_and_day(event['data']['object']['current_period_end'])
           ),
           attachments=self.create_report_attachments()
         )
       else:
         self.send_slack_message(
-          text="%s's subscription will no longer be cancelled." % self.summarize_customer(event['data']['object']['customer']),
+          text="%s's subscription will no longer be cancelled." % summarize_stripe_customer(event['data']['object']['customer']),
           attachments=self.create_report_attachments()
         )
 
   @stripe_event_processor('invoice.payment_failed')
   def process_invoice_payment_failed(self, event):
     self.send_slack_message(
-      text="%s's payment failed :alert:" % self.summarize_customer(event['data']['object']['customer']),
+      text="%s's payment failed :alert:" % summarize_stripe_customer(event['data']['object']['customer']),
       attachments=self.create_report_attachments()
     )
 
@@ -199,22 +199,6 @@ class SynchrotronWorker:
     self.send_slack_message(
       text=":beaker: A charge has been disputed :alert2:"
     )
-
-  def summarize_customer(self, customer):
-    # Fetch the customer if we were given an id
-    if isinstance(customer, str):
-      try:
-        customer = stripe.Customer.retrieve(customer)
-      except stripe.error.InvalidRequestError:
-        # probably a webhook test or something, in which case we get a customer id that doesn't actually exist
-        return customer
-
-    # Paid Memberships Pro creates customer descriptions of the form "name (email)" while MemberPress just sets them
-    # to "name". Detect the former and avoid duplicating the email address.
-    if customer.email in customer.description:
-      return customer.description
-    else:
-      return '%s (%s)' % (customer.description, customer.email)
 
   def month_and_day(self, epoch_time):
     # strftime on Windows doesn't support the - in %-d. Might want to format this a different way...
