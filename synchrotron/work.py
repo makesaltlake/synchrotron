@@ -164,7 +164,7 @@ class SynchrotronWorker:
   @stripe_event_processor('customer.subscription.deleted')
   def process_customer_subscription_deleted(self, event):
     self.send_slack_message(
-      text="%s's subscription has been cancelled." % summarize_stripe_customer(event['data']['object']['customer']),
+      text="Cancellation: %s's subscription has been cancelled." % summarize_stripe_customer(event['data']['object']['customer']),
       attachments=self.create_report_attachments()
     )
 
@@ -175,7 +175,7 @@ class SynchrotronWorker:
     if 'cancel_at_period_end' in previous_attributes and cancel_at_period_end != previous_attributes['cancel_at_period_end']:
       if cancel_at_period_end:
         self.send_slack_message(
-          text="%s's subscription will be cancelled on %s" % (
+          text="Scheduled cancellation: %s's subscription will be cancelled on %s" % (
             summarize_stripe_customer(event['data']['object']['customer']),
             self.month_and_day(event['data']['object']['current_period_end'])
           ),
@@ -183,14 +183,14 @@ class SynchrotronWorker:
         )
       else:
         self.send_slack_message(
-          text="%s's subscription will no longer be cancelled." % summarize_stripe_customer(event['data']['object']['customer']),
+          text="Reinstatement: %s's subscription will no longer be cancelled." % summarize_stripe_customer(event['data']['object']['customer']),
           attachments=self.create_report_attachments()
         )
 
   @stripe_event_processor('invoice.payment_failed')
   def process_invoice_payment_failed(self, event):
     self.send_slack_message(
-      text="%s's payment failed :alert:" % summarize_stripe_customer(event['data']['object']['customer']),
+      text="Failed payment: %s's payment failed :alert:" % summarize_stripe_customer(event['data']['object']['customer']),
       attachments=self.create_report_attachments()
     )
 
