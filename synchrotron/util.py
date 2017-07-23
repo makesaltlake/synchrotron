@@ -24,7 +24,7 @@ def summarize_stripe_customer(customer):
 
   # Paid Memberships Pro creates customer descriptions of the form "name (email)" while MemberPress just sets them
   # to "name". Detect the former and avoid duplicating the email address.
-  if customer.email in customer.description:
+  if customer.description and customer.email in customer.description:
     return customer.description
   else:
-    return '%s (%s)' % (customer.description, customer.email)
+    return '%s (%s)' % (customer.description or 'unknown', customer.email)
