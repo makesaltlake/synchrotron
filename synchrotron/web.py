@@ -56,9 +56,10 @@ def membership_delta_report():
 
   events = []
   for subscription in stripe.Subscription.list(status='all', limit=100, expand=['data.customer']).auto_paging_iter():
-    events.append((datetime.utcfromtimestamp(subscription.start), 1, subscription.customer))
+    # subscription id is present to break ties between events with the same date
+    events.append((datetime.utcfromtimestamp(subscription.start), subscription.id, 1, subscription.customer))
     if subscription.ended_at:
-      events.append((datetime.utcfromtimestamp(subscription.ended_at), -1, subscription.customer))
+      events.append((datetime.utcfromtimestamp(subscription.ended_at), subscription.id, -1, subscription.customer))
 
   events.sort()
 
@@ -69,7 +70,7 @@ def membership_delta_report():
   else:
     writer.writerow(['Date', 'Membership Change'])
 
-  for date, membership_change, customer in events:
+  for date, _, membership_change, customer in events:
     if include_customers:
       writer.writerow([date.strftime('%Y-%m-%d %H:%M:%S'), membership_change, summarize_stripe_customer(customer)])
     else:
