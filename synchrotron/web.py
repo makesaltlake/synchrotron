@@ -8,7 +8,16 @@ import json
 import stripe
 import io
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta
+
+
+# hacky cache for the membership report delta - since we're now timing out computing it live every time. it'll be moved
+# into synchrotron3 soon, so no sense doing proper caching here.
+membership_delta_cache_date = datetime.utcfromtimestamp(0)
+membership_delta_cache_data = None
+
+MEMBERSHIP_DELTA_CACHE_DAYS = 3
+
 
 setup_stripe()
 app = flask.Flask('synchrotron')
@@ -50,33 +59,44 @@ def stripe_webhook():
 
 @app.route('/reports/membership_delta')
 def membership_delta_report():
+  global membership_delta_cache_date
+  global membership_delta_cache_data
+
   check_token(request.args['token'], 'REPORT_TOKEN')
 
-  include_customers = os.getenv('MEMBERSHIP_REPORTS_INCLUDE_CUSTOMERS') == '1'
+  if membership_delta_cache_date + timedelta(days=MEMBERSHIP_DELTA_CACHE_DAYS) < datetime.utcnow():
+    print('recomputing membership delta report')
 
-  events = []
-  for subscription in stripe.Subscription.list(status='all', limit=100, expand=['data.customer']).auto_paging_iter():
-    # subscription id is present to break ties between events with the same date
-    events.append((datetime.utcfromtimestamp(subscription.start), subscription.id, 1, subscription.customer))
-    if subscription.ended_at:
-      events.append((datetime.utcfromtimestamp(subscription.ended_at), subscription.id, -1, subscription.customer))
+    include_customers = os.getenv('MEMBERSHIP_REPORTS_INCLUDE_CUSTOMERS') == '1'
 
-  events.sort()
+    events = []
+    for subscription in stripe.Subscription.list(status='all', limit=100, expand=['data.customer']).auto_paging_iter():
+      # subscription id is present to break ties between events with the same date
+      events.append((datetime.utcfromtimestamp(subscription.start), subscription.id, 1, subscription.customer))
+      if subscription.ended_at:
+        events.append((datetime.utcfromtimestamp(subscription.ended_at), subscription.id, -1, subscription.customer))
 
-  output = io.StringIO()
-  writer = csv.writer(output)
-  if include_customers:
-    writer.writerow(['Date', 'Membership Change', 'Description'])
-  else:
-    writer.writerow(['Date', 'Membership Change'])
+    events.sort()
 
-  for date, _, membership_change, customer in events:
+    output = io.StringIO()
+    writer = csv.writer(output)
     if include_customers:
-      writer.writerow([date.strftime('%Y-%m-%d %H:%M:%S'), membership_change, summarize_stripe_customer(customer)])
+      writer.writerow(['Date', 'Membership Change', 'Description'])
     else:
-      writer.writerow([date.strftime('%Y-%m-%d %H:%M:%S'), membership_change])
+      writer.writerow(['Date', 'Membership Change'])
 
-  return flask.Response(output.getvalue(), mimetype='text/csv')
+    for date, _, membership_change, customer in events:
+      if include_customers:
+        writer.writerow([date.strftime('%Y-%m-%d %H:%M:%S'), membership_change, summarize_stripe_customer(customer)])
+      else:
+        writer.writerow([date.strftime('%Y-%m-%d %H:%M:%S'), membership_change])
+
+    membership_delta_cache_data = output.getvalue()
+    membership_delta_cache_date = datetime.utcnow()
+  else:
+    print('using cached membership delta report')
+
+  return flask.Response(membership_delta_cache_data, mimetype='text/csv')
 
 
 def check_token(token_value, token_env_var_name):
