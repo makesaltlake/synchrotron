@@ -82,7 +82,11 @@ class SynchrotronWorker:
     per_month_baseline = 0.0
 
     for subscription in stripe.Subscription.list(expand=['data.customer', 'data.plan.product']).auto_paging_iter():
-      if not hasattr(subscription.plan.product, 'name') or not 'membership' in subscription.plan.product.name.lower():
+      # Some plans don't have names. It looks like these are all deleted plans and it looks like all of those
+      # correspond to subscriptions created by Paid Memberships Pro. They should be counted as memberships since they
+      # do represent recurring revenue, but we should look into this further to see if there's a better way to decide
+      # what to do with these.
+      if hasattr(subscription.plan.product, 'name') and not 'membership' in subscription.plan.product.name.lower():
         continue
       total_count += 1
       if subscription.status in ('active', 'trialing'):
