@@ -9,7 +9,7 @@ def redis_connection():
 
 
 def setup_stripe():
-  stripe.api_version = '2016-10-19'
+  stripe.api_version = '2019-03-14'
   stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 
 

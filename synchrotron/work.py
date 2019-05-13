@@ -81,8 +81,8 @@ class SynchrotronWorker:
     per_month_average_before_fees = 0.0
     per_month_baseline = 0.0
 
-    for subscription in stripe.Subscription.list(expand=['data.customer']).auto_paging_iter():
-      if not 'membership' in subscription.plan.name.lower():
+    for subscription in stripe.Subscription.list(expand=['data.customer', 'data.plan.product']).auto_paging_iter():
+      if not 'membership' in subscription.plan.product.name.lower():
         continue
       total_count += 1
       if subscription.status in ('active', 'trialing'):
